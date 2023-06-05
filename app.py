@@ -232,7 +232,10 @@ app.layout = dbc.Container([
                     ),
         )
     ),
-    dbc.Col(
+    dbc.Row(
+        [
+    dbc.Col([
+        html.H4(children="Set Country category"),
         dcc.Dropdown(id='country_dropdown',
                      value=['Albania', 'Algeria'],
                      options=[
@@ -240,11 +243,47 @@ app.layout = dbc.Container([
 
                      ], multi=True, placeholder='Choose Country...'
                      ),
+        ]
+    ),
+
+    dbc.Col([
+        html.H4(children="Set X-axis category"),
+        dcc.Dropdown(id='crossfilter-xaxis-column',
+                     value=['Amount (Nominal)'],
+                     options=[
+                         {'label': i, 'value': i} for i in indicator_list
+
+                     ], multi=False, placeholder='Choose X Indicator...'
+                     ),
+        ]
+    ),
+            dbc.Col([
+                    html.H4(children="Set Y-axis category"),
+                dcc.Dropdown(id='crossfilter-yaxis-column',
+                             value=['Amount (Nominal)'],
+                             options=[
+                                 {'label': i, 'value': i} for i in indicator_list
+
+                             ], multi=False, placeholder='Choose y Indicator...'
+                             ),
+                ]
+            ),
+            ]
     ),
 
     html.Div
         (
         [
+            dbc.Col(
+                [dcc.Graph(
+                    id="crossfilter-indicator-scatter",
+                    figure={},
+                    hoverData={
+                        "points": [{"customdata": "Albania"}]
+                    },
+                ),
+                ],
+            ),
             dbc.Row
                 (
                 [
@@ -421,6 +460,105 @@ def display_generic_map_chart(indicator, country):
         )
         return fig
 
+@app.callback(
+    Output("crossfilter-indicator-scatter", "figure"),
+    Input("crossfilter-xaxis-column", "value"),
+    Input("crossfilter-yaxis-column", "value"),
+    Input('years-range', 'value'),
+    Input("country_dropdown", "value"),
+)
+def update_graph(
+    xaxis_column_name,
+    yaxis_column_name,
+    years_chosen,
+    country,
+
+):
+    dff = df.copy()
+    df1 = dff[dff['Commitment Year'].between(years_chosen[0], years_chosen[1])]
+    fig = px.scatter(
+        x=df1[xaxis_column_name],
+        y=df1[yaxis_column_name],
+        hover_name=df1['Recipient'],
+    )
+
+    fig.update_traces(
+        customdata=df1['Recipient']
+    )
+
+
+    fig.update_layout(
+        margin={"l": 40, "b": 40, "t": 10, "r": 0}, hovermode="closest")
+
+    # Highlight selections with individual markers for each member of selection
+    try:
+        selection = country
+        dicts = []
+        for s in selection:
+            try:
+                ix = list(fig.data[0].customdata).index(s)
+                dicts.append(
+                    {"name": s, "x": fig.data[0].x[ix], "y": fig.data[0].y[ix]}
+                )
+            except:
+                pass
+
+        if not len(dicts) == 0:
+            for d in dicts:
+                fig.add_trace(
+                    go.Scatter(
+                        x=[d["x"]],
+                        y=[d["y"]],
+                        name=d["name"],
+                        mode="markers",
+                        marker_symbol="circle-open",
+                        marker_line_width=4,
+                        marker_color=coldict[d["name"]],
+                        marker_size=14,
+                        hoverinfo="skip",
+                    )
+                )
+    except:
+        pass
+
+    fig.update_layout(height=650)
+    fig.update_layout(margin=dict(l=20, r=275, t=20, b=20))
+    fig.update_layout(uirevision='constant', legend=dict(orientation="v"))
+    return fig#, selection
+@app.callback(
+    Output("dd1_focus", "value"),
+    Output(
+        "crossfilter-indicator-scatter", "clickData"
+    ),  # Used to reset clickData in order to avoid a circular reference between clickData and selections from dd1
+    Input("crossfilter-indicator-scatter", "clickData"),
+    Input("dd1_focus", "value"),
+)
+def print_clickdata1(clickinfo, dd1_existing_selection):
+    # If dropdown has values, clickdata is added to that list and duplicates are removed.
+    if dd1_existing_selection is not None and bool(dd1_existing_selection) and bool(clickinfo):
+        # The following try/pass needs to be there since
+        # dropdown values sometimes are REMOVED by clicking the x option
+        if clickinfo["points"][0]["customdata"] not in dd1_existing_selection:
+            try:
+                new_selection = dd1_existing_selection + [
+                    clickinfo["points"][0]["customdata"]
+                ]
+                new_selection = list(dict.fromkeys(new_selection))
+            except:
+                new_selection = dd1_existing_selection
+        else:
+            dd1_existing_selection.remove(clickinfo["points"][0]["customdata"])
+            new_selection = dd1_existing_selection
+    else:
+        try:
+            # If dropdown has no values,
+            # clickdata is attempted to be added, and if that failscd
+            # an empty list is set to the values
+            new_selection = [clickinfo["points"][0]["customdata"]]
+        except:
+             new_selection = dd1_existing_selection
+
+    return new_selection, {},
 
 if __name__ == "__main__":
     app.run_server(debug=True)
