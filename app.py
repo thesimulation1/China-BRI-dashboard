@@ -249,9 +249,12 @@ app.layout = dbc.Container([
     dbc.Col([
         html.H4(children="Set X-axis category"),
         dcc.Dropdown(id='crossfilter-xaxis-column',
-                     value=['Amount (Nominal)'],
-                     options=[
-                         {'label': i, 'value': i} for i in indicator_list
+                     value='Amount (Nominal)',
+                     options=['Implementation Start Year', 'Completion Year',
+       'Amount (Original Currency)', 'Amount (Constant USD2017)',
+       'Amount (Nominal)', 'Maturity', 'Interest Rate', 'Grace Period',
+       'Management Fee', 'Commitment Fee', 'Grant Element',
+       'Project Implementation Score', 'Loan Detail Score'
 
                      ], multi=False, placeholder='Choose X Indicator...'
                      ),
@@ -260,11 +263,29 @@ app.layout = dbc.Container([
             dbc.Col([
                     html.H4(children="Set Y-axis category"),
                 dcc.Dropdown(id='crossfilter-yaxis-column',
-                             value=['Amount (Nominal)'],
-                             options=[
-                                 {'label': i, 'value': i} for i in indicator_list
+                             value='Maturity',
+                             options=['Implementation Start Year', 'Completion Year',
+       'Amount (Original Currency)', 'Amount (Constant USD2017)',
+       'Amount (Nominal)', 'Maturity', 'Interest Rate', 'Grace Period',
+       'Management Fee', 'Commitment Fee', 'Grant Element',
+       'Project Implementation Score', 'Loan Detail Score'
 
                              ], multi=False, placeholder='Choose y Indicator...'
+                             ),
+                ]
+            ),
+
+dbc.Col([
+                    html.H4(children="Set Z-axis category"),
+                dcc.Dropdown(id='crossfilter-zaxis-column',
+                             value='Amount (Original Currency)',
+                             options=['Implementation Start Year', 'Completion Year',
+       'Amount (Original Currency)', 'Amount (Constant USD2017)',
+       'Amount (Nominal)', 'Maturity', 'Interest Rate', 'Grace Period',
+       'Management Fee', 'Commitment Fee', 'Grant Element',
+       'Project Implementation Score', 'Loan Detail Score'
+
+                             ], multi=False, placeholder='Choose Z Indicator...'
                              ),
                 ]
             ),
@@ -323,7 +344,7 @@ def display_generic_map_chart(indicator):
     else:
         dff = df.groupby(['Recipient'])[indicator].sum().reset_index()
         fig = px.choropleth(dff, locations='Recipient', locationmode='country names', color=indicator,
-                            color_continuous_scale=px.colors.sequential.Oranges, title=f'Accumilatted {indicator}',
+                            color_continuous_scale=px.colors.sequential.Oranges, title=f'Accumulatted {indicator}',
                             hover_name='Recipient', projection='equirectangular')
         fig.layout.geo.showframe = False
         fig.update_layout(
@@ -443,7 +464,7 @@ def display_generic_map_chart(indicator, country):
         raise PreventUpdate
     else:
         df1 = dff[dff['Recipient'].isin(country)]
-        df_year = df1.groupby(['Commitment Year', 'Recipient', ])[indicator].sum().reset_index()
+        df_year = df1.groupby(['Commitment Year', 'Recipient'])[indicator].sum().reset_index()
         fig = px.line(df_year, x="Commitment Year", y=indicator, color='Recipient', title=f'{indicator} by year')
         # fig.layout.coloraxis.colorbar.title =\'indicator'
         fig.update_layout(
@@ -464,101 +485,38 @@ def display_generic_map_chart(indicator, country):
     Output("crossfilter-indicator-scatter", "figure"),
     Input("crossfilter-xaxis-column", "value"),
     Input("crossfilter-yaxis-column", "value"),
-    Input('years-range', 'value'),
-    Input("country_dropdown", "value"),
+    Input("crossfilter-zaxis-column", "value")
 )
 def update_graph(
     xaxis_column_name,
     yaxis_column_name,
-    years_chosen,
-    country,
+    zaxis_column_name
 
 ):
     dff = df.copy()
-    df1 = dff[dff['Commitment Year'].between(years_chosen[0], years_chosen[1])]
-    fig = px.scatter(
-        x=df1[xaxis_column_name],
-        y=df1[yaxis_column_name],
-        hover_name=df1['Recipient'],
+    indicator = dff.select_dtypes("float64")
+    df2 = pd.merge(indicator, df['Recipient'], left_index=True, right_index=True)
+    df2 = df2.groupby('Recipient').sum().reset_index()
+    #mean_value_x = dff[xaxis_column_name].mean()
+    #mean_value_y = dff[yaxis_column_name].mean()
+    #mean_value_z = dff[zaxis_column_name].mean()
+    #df1 = dff[dff['Commitment Year'].between(years_chosen[0], years_chosen[1])]
+    #dff[xaxis_column_name] = dff[xaxis_column_name].fillna(value=mean_value_x, inplace=True)
+    #dff[yaxis_column_name] = dff[yaxis_column_name].fillna(value=mean_value_y, inplace=True)
+    #dff[zaxis_column_name] = dff[zaxis_column_name].fillna(value=mean_value_z, inplace=True)
+
+    fig = px.scatter(df2,
+        x=xaxis_column_name,
+        y=yaxis_column_name,
+        size = zaxis_column_name,
+        #color = df1['Recipient'],
+        hover_name=df2['Recipient']
     )
 
-    fig.update_traces(
-        customdata=df1['Recipient']
-    )
 
 
-    fig.update_layout(
-        margin={"l": 40, "b": 40, "t": 10, "r": 0}, hovermode="closest")
+    return fig
 
-    # Highlight selections with individual markers for each member of selection
-    try:
-        selection = country
-        dicts = []
-        for s in selection:
-            try:
-                ix = list(fig.data[0].customdata).index(s)
-                dicts.append(
-                    {"name": s, "x": fig.data[0].x[ix], "y": fig.data[0].y[ix]}
-                )
-            except:
-                pass
-
-        if not len(dicts) == 0:
-            for d in dicts:
-                fig.add_trace(
-                    go.Scatter(
-                        x=[d["x"]],
-                        y=[d["y"]],
-                        name=d["name"],
-                        mode="markers",
-                        marker_symbol="circle-open",
-                        marker_line_width=4,
-                        marker_color=coldict[d["name"]],
-                        marker_size=14,
-                        hoverinfo="skip",
-                    )
-                )
-    except:
-        pass
-
-    fig.update_layout(height=650)
-    fig.update_layout(margin=dict(l=20, r=275, t=20, b=20))
-    fig.update_layout(uirevision='constant', legend=dict(orientation="v"))
-    return fig#, selection
-@app.callback(
-    Output("dd1_focus", "value"),
-    Output(
-        "crossfilter-indicator-scatter", "clickData"
-    ),  # Used to reset clickData in order to avoid a circular reference between clickData and selections from dd1
-    Input("crossfilter-indicator-scatter", "clickData"),
-    Input("dd1_focus", "value"),
-)
-def print_clickdata1(clickinfo, dd1_existing_selection):
-    # If dropdown has values, clickdata is added to that list and duplicates are removed.
-    if dd1_existing_selection is not None and bool(dd1_existing_selection) and bool(clickinfo):
-        # The following try/pass needs to be there since
-        # dropdown values sometimes are REMOVED by clicking the x option
-        if clickinfo["points"][0]["customdata"] not in dd1_existing_selection:
-            try:
-                new_selection = dd1_existing_selection + [
-                    clickinfo["points"][0]["customdata"]
-                ]
-                new_selection = list(dict.fromkeys(new_selection))
-            except:
-                new_selection = dd1_existing_selection
-        else:
-            dd1_existing_selection.remove(clickinfo["points"][0]["customdata"])
-            new_selection = dd1_existing_selection
-    else:
-        try:
-            # If dropdown has no values,
-            # clickdata is attempted to be added, and if that failscd
-            # an empty list is set to the values
-            new_selection = [clickinfo["points"][0]["customdata"]]
-        except:
-             new_selection = dd1_existing_selection
-
-    return new_selection, {},
 
 if __name__ == "__main__":
     app.run_server(debug=True)
